@@ -9,7 +9,7 @@ public class DisturbanceSin extends GraphicalSimulations{
 	DisturbanceSin(double V0){
 		super(V0);
 	}
-	public static void main(String args){
+	public static void main(String args[]){
 		new DisturbanceSin(50.0);
 	}
 	double dV(double x, double t){
