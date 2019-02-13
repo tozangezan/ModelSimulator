@@ -14,6 +14,10 @@ public abstract class GraphicalSimulations extends JFrame{
 	double maxY;
 
 	GraphicalSimulations(){
+		this(0.0);
+	}
+	GraphicalSimulations(double V0){
+		V=V0;
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setSize(640,480);
 		setVisible(true);
