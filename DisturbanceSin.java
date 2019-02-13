@@ -4,7 +4,7 @@ public class DisturbanceSin extends GraphicalSimulations{
 	double K=100;
 	double r=2;
 	double L=10;
-	double C0=20;
+	double C0=45;
 	double w=1;
 	DisturbanceSin(double V0){
 		super(V0);
