@@ -7,6 +7,11 @@ import java.awt.event.*;
 import java.security.*;
 
 public  class VisualSimulations{
+	// basic tools
+	SecureRandom r1;
+	int[] dr={1,1,1,0,0,-1,-1,-1};
+	int[] dc={1,0,-1,1,-1,1,0,-1};
+
 	// model
 	int nPartition;
 	double K;
@@ -22,6 +27,7 @@ public  class VisualSimulations{
 	double[][] disturbance;
 	int[] sheep_row;
 	int[] sheep_col;
+	int[] sheep_pressure;
 	
 	boolean isInside(int r, int c) {
 		return (r >= 0 && r < H && c >= 0 && c < W);
@@ -29,7 +35,7 @@ public  class VisualSimulations{
 
 	void generate(String seedStr){
 		try{
-			SecureRandom r1 = SecureRandom.getInstance("SHA1PRNG"); 
+			r1 = SecureRandom.getInstance("SHA1PRNG"); 
 			long seed = Long.parseLong(seedStr);
 			r1.setSeed(seed);
 			H = 50;
@@ -40,12 +46,13 @@ public  class VisualSimulations{
 			nPartition = 1000;
 			r = 0.5;
 			K = 100;
-			C0 = 10;
+			C0 = 0;
 			maxT = 500;
 			field=new double[H][W];
 			disturbance=new double[H][W];
 			sheep_row=new int[S];
 			sheep_col=new int[S];
+			sheep_pressure=new int[S];
 			// TODO: 何か generate するべきものをする
 			for(int i=0;i<H;i++){
 				for(int j=0;j<W;j++){
@@ -53,6 +60,16 @@ public  class VisualSimulations{
 					disturbance[i][j]=C0;
 					// nextGaussianでもいいかも
 				}
+			}
+
+			for(int i=0;i<S;i++){
+				sheep_row[i]=r1.nextInt(H);
+				sheep_col[i]=r1.nextInt(W);
+				sheep_pressure[i]=30;
+			}
+
+			for(int i=0;i<S;i++){
+				disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
 			}
 		}catch(Exception e){
 			e.printStackTrace();
@@ -82,6 +99,17 @@ public  class VisualSimulations{
 					}
 				}
 				draw();
+				for(int i=0;i<S;i++){
+					int direction=r1.nextInt(8);
+					int tr=sheep_row[i]+dr[direction];
+					int tc=sheep_col[i]+dc[direction];
+					if(isInside(tr,tc)){
+						disturbance[sheep_row[i]][sheep_col[i]]-=sheep_pressure[i];
+						sheep_row[i]=tr;
+						sheep_col[i]=tc;
+						disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
+					}
+				}
 			}
 
 		}catch(Exception e){
@@ -113,7 +141,7 @@ public  class VisualSimulations{
 		for (int i = 0; i < H; ++i)
 		for (int j = 0; j < W; ++j) {
 			cache[i][j] = field[i][j];
-			g2.setColor(new Color(Math.max(0.0f,1.0f-(float)(cache[i][j]/K)),1.0f,Math.max(0.0f,1.0f-(float)(cache[i][j]/K))));
+			g2.setColor(new Color(0.0f, 1.0f, 0.0f, Math.min(1.0f, Math.max(0.0f,(float)(cache[i][j]/K)))));
 			g2.fillRect(j * SZ + 1, i * SZ + 1, SZ - 1, SZ - 1);
 		}
 
