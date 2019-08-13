@@ -7,13 +7,19 @@ import java.awt.event.*;
 import java.security.*;
 
 public  class VisualSimulations{
+	// constants
+	public static final int GRAPH_W = 480;
+	public static final int GRAPH_H = 360;
+
+	public static final double EPS = 1e-9;
 	// basic tools
 	SecureRandom r1;
 	int[] dr={1,1,1,0,0,-1,-1,-1};
 	int[] dc={1,0,-1,1,-1,1,0,-1};
 	static boolean debug;
 	static boolean regular;
-
+	static boolean hillclimb;
+	static boolean torus;
 	// model
 	int nPartition;
 	double K;
@@ -27,6 +33,7 @@ public  class VisualSimulations{
 	int O;
 	int S;
 	int T;
+	int activeCells;
 	int maxT;
 	double[][] field;
 	double[][] new_field;
@@ -37,12 +44,17 @@ public  class VisualSimulations{
 	int[] sheep_pressure;
 	
 	// log
-
-
+	double[] log_total;
+	double[] log_productivity;
+	double[] log_grazing;
+	double[] log_variance;
+	double[] log_skewness;
 	boolean isInside(int r, int c) {
+		if(torus)return true;
 		return (r >= 0 && r < H && c >= 0 && c < W);
 	}
 	boolean isInsideFence(int r, int c) {
+		if(torus)return true;
 		return (r >= O && r < H-O && c >= O && c < W-O);
 	}
 
@@ -53,9 +65,13 @@ public  class VisualSimulations{
 			r1.setSeed(seed);
 			H = 50;
 			W = 50;
-			S = 200;
+			S = 315;
 			O = 5;
 			T = 0;
+			if(torus){
+				O=0;
+			}
+			activeCells = (H-O*2)*(W-O*2);
 
 			nPartition = 1000;
 			r = 0.3;
@@ -70,6 +86,12 @@ public  class VisualSimulations{
 			sheep_row=new int[S];
 			sheep_col=new int[S];
 			sheep_pressure=new int[S];
+
+			log_total=new double[maxT];
+			log_productivity=new double[maxT];
+			log_grazing=new double[maxT];
+			log_variance=new double[maxT];
+			log_skewness=new double[maxT];
 			// TODO: 何か generate するべきものをする
 			for(int i=0;i<H;i++){
 				for(int j=0;j<W;j++){
@@ -103,13 +125,34 @@ public  class VisualSimulations{
 	public void runTest(String seed){
 		try{
 			generate(seed);
-			jf.setSize((W+3)*SZ+50, H*SZ+40);
+			jf.setSize((W+3)*SZ+550, H*SZ+40);
 			jf.setVisible(true);
 			draw();
 			try{Thread.sleep(3000);}
 			catch(Exception e){}
 			while(T < maxT){
-				T++;
+				log_total[T]=0;
+				log_grazing[T]=0;
+				log_productivity[T]=0;
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						if(isInsideFence(i,j)){
+							log_total[T]+=field[i][j];
+						}
+					}
+				}
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						if(isInsideFence(i,j)){
+							log_variance[T]+=(field[i][j]-log_total[T]/activeCells)*(field[i][j]-log_total[T]/activeCells);
+							log_skewness[T]+=Math.pow(field[i][j]-log_total[T]/activeCells,3.0);
+						}
+					}
+				}
+				log_variance[T]/=activeCells;
+				log_skewness[T]/=activeCells;
+				log_skewness[T]/=Math.pow(log_variance[T],1.5);
+
 				try{Thread.sleep(del);}
 				catch(Exception e){}
 				for(int k=0;k<nPartition;k++){
@@ -118,13 +161,19 @@ public  class VisualSimulations{
 							double dt=1.0/nPartition;
 							double x=field[i][j];
 							for(int l=0;l<8;l++){
-								if(isInside(i+dr[l],j+dc[l])){
+								if(torus){
+									x+=field[(i+dr[l]+H)%H][(j+dc[l]+W)%W]*d/nPartition/8;
+								}else if(isInside(i+dr[l],j+dc[l])){
 									x+=field[i+dr[l]][j+dc[l]]*d/nPartition/8;
 								}
 							}
 							x-=field[i][j]*d/nPartition;
 							double dx=x*r*(1-x/K)-disturbance[i][j]*x*x/(M+x*x);
 
+							if(isInsideFence(i,j)){
+								log_productivity[T]+=x*r*(1-x/K)*dt;
+								log_grazing[T]+=disturbance[i][j]*x*x/(M+x*x)*dt;
+							}
 							new_field[i][j]=field[i][j]+dt*dx;
 						}
 					}
@@ -143,6 +192,9 @@ public  class VisualSimulations{
 						System.out.println();
 					}
 				}
+
+				// update log data
+				T++;
 				draw();
 				for(int i=0;i<S;i++){
 					int tr,tc;
@@ -154,6 +206,19 @@ public  class VisualSimulations{
 							tc=O;
 							if(!isInsideFence(tr,tc)){
 								tr=O;
+							}
+						}
+					}else if(hillclimb){
+						tr=sheep_row[i];
+						tc=sheep_col[i];
+						for(int j=0;j<8;j++){
+							int tmp_tr=(sheep_row[i]+dr[j]+H)%H;
+							int tmp_tc=(sheep_col[i]+dc[j]+W)%W;
+							if(isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
+								if(field[tr][tc]<field[tmp_tr][tmp_tc]){
+									tr=tmp_tr;
+									tc=tmp_tc;
+								}
 							}
 						}
 					}else{
@@ -188,12 +253,12 @@ public  class VisualSimulations{
 	}
 	void DrawBoard(){
 		if(cacheBoard == null) {
-			cacheBoard = new BufferedImage(W*SZ+360,H*SZ+40,BufferedImage.TYPE_INT_RGB);
+			cacheBoard = new BufferedImage(W*SZ+600,H*SZ+40,BufferedImage.TYPE_INT_RGB);
 		}
 		Graphics2D g2 = (Graphics2D)cacheBoard.getGraphics();
 		// background
-		g2.setColor(new Color(0xDDDDDD));
-		g2.fillRect(0,0,W*SZ+120,H*SZ+40);
+		g2.setColor(new Color(0xFFFFFF));
+		g2.fillRect(0,0,W*SZ+600,H*SZ+40);
 		g2.setColor(Color.WHITE);
 		g2.fillRect(0,0,W*SZ,H*SZ);
 
@@ -224,12 +289,30 @@ public  class VisualSimulations{
 	}
 	void DrawGraph(){
 		if(cacheBoard == null) {
-			cacheBoard = new BufferedImage(W*SZ+360,H*SZ+40,BufferedImage.TYPE_INT_RGB);
+			cacheBoard = new BufferedImage(W*SZ+600,H*SZ+40,BufferedImage.TYPE_INT_RGB);
 		}
 		Graphics2D g2 = (Graphics2D)cacheBoard.getGraphics();
 		// background
 		g2.setColor(Color.BLACK);
 		g2.setStroke(new BasicStroke(3.0f));
+		g2.drawLine(W*SZ+25,450,W*SZ+25+GRAPH_W,450);
+		g2.drawLine(W*SZ+25,450,W*SZ+25,450-GRAPH_H);
+	
+		g2.setStroke(new BasicStroke(2.0f));
+
+		for(int i=1;i<Math.min(T,GRAPH_W);i++){
+			g2.setColor(Color.GREEN);
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_total[i-1]/K/activeCells*GRAPH_H),W*SZ+25+i,(int)(450-log_total[i]/K/activeCells*GRAPH_H));
+			g2.setColor(Color.BLUE);
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_productivity[i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_productivity[i]/K/activeCells*GRAPH_H*5));
+			g2.setColor(Color.RED);
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_grazing[i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_grazing[i]/K/activeCells*GRAPH_H*5));
+			g2.setColor(Color.ORANGE);
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_variance[i-1]*GRAPH_H/K/K*8),W*SZ+25+i,(int)(450-log_variance[i]*GRAPH_H/K/K*8));
+			g2.setColor(Color.PINK);
+			g2.drawLine(W*SZ+25+i-1,(int)(225-log_skewness[i-1]*GRAPH_H),W*SZ+25+i,(int)(225-log_skewness[i]*GRAPH_H));
+			
+		}
 
 		g2.dispose();
 	}
@@ -244,7 +327,7 @@ public  class VisualSimulations{
 	public class Vis extends JPanel implements WindowListener {
 		public void paint(Graphics g){
 			DrawBoard();
-			// DrawGraph();
+			DrawGraph();
 
 			BufferedImage bi = deepCopy(cacheBoard);
 			Graphics2D g2 = (Graphics2D)bi.getGraphics();
@@ -252,9 +335,9 @@ public  class VisualSimulations{
 			g2.setColor(Color.BLACK);
 			g2.setFont(new Font("Arial",Font.BOLD,14));
 			FontMetrics fm = g2.getFontMetrics();
-			g2.drawString(String.format("T = %d", T), W*SZ+25, 110+fm.getHeight());
+			g2.drawString(String.format("T = %d", T), W*SZ+25, 25+fm.getHeight());
 
-			g.drawImage(bi,0,0,W*SZ+360,H*SZ+40,null);
+			g.drawImage(bi,0,0,W*SZ+600,H*SZ+40,null);
 		}
 		public Vis(){}
 		public void windowClosing(WindowEvent e){
@@ -298,6 +381,10 @@ public  class VisualSimulations{
 				debug = true;
 			if(args[i].equals("-regular"))
 				regular = true;
+			if(args[i].equals("-hillclimb"))
+				hillclimb = true;
+			if(args[i].equals("-torus"))
+				torus = true;
 		}
 		VisualSimulations vis = new VisualSimulations(seed);
 	}
