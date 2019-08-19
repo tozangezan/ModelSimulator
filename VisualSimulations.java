@@ -65,7 +65,7 @@ public  class VisualSimulations{
 			r1.setSeed(seed);
 			H = 50;
 			W = 50;
-			S = 315;
+			S = 100;
 			O = 5;
 			T = 0;
 			if(torus){
@@ -74,11 +74,11 @@ public  class VisualSimulations{
 			activeCells = (H-O*2)*(W-O*2);
 
 			nPartition = 1000;
-			r = 0.3;
+			r = 0.1;
 			K = 100;
 			C0 = 0.1;
-			d = 0.3;
-			M = 20;
+			d = 0.03;
+			M = 40;
 			maxT = 5000;
 			field=new double[H][W];
 			new_field=new double[H][W];
@@ -302,15 +302,15 @@ public  class VisualSimulations{
 
 		for(int i=1;i<Math.min(T,GRAPH_W);i++){
 			g2.setColor(Color.GREEN);
-			g2.drawLine(W*SZ+25+i-1,(int)(450-log_total[i-1]/K/activeCells*GRAPH_H),W*SZ+25+i,(int)(450-log_total[i]/K/activeCells*GRAPH_H));
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_total[Math.max(0,T-GRAPH_W)+i-1]/K/activeCells*GRAPH_H),W*SZ+25+i,(int)(450-log_total[Math.max(0,T-GRAPH_W)+i]/K/activeCells*GRAPH_H));
 			g2.setColor(Color.BLUE);
-			g2.drawLine(W*SZ+25+i-1,(int)(450-log_productivity[i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_productivity[i]/K/activeCells*GRAPH_H*5));
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_productivity[Math.max(0,T-GRAPH_W)+i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_productivity[Math.max(0,T-GRAPH_W)+i]/K/activeCells*GRAPH_H*5));
 			g2.setColor(Color.RED);
-			g2.drawLine(W*SZ+25+i-1,(int)(450-log_grazing[i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_grazing[i]/K/activeCells*GRAPH_H*5));
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_grazing[Math.max(0,T-GRAPH_W)+i-1]/K/activeCells*GRAPH_H*5),W*SZ+25+i,(int)(450-log_grazing[Math.max(0,T-GRAPH_W)+i]/K/activeCells*GRAPH_H*5));
 			g2.setColor(Color.ORANGE);
-			g2.drawLine(W*SZ+25+i-1,(int)(450-log_variance[i-1]*GRAPH_H/K/K*8),W*SZ+25+i,(int)(450-log_variance[i]*GRAPH_H/K/K*8));
+			g2.drawLine(W*SZ+25+i-1,(int)(450-log_variance[Math.max(0,T-GRAPH_W)+i-1]*GRAPH_H/K/K*8),W*SZ+25+i,(int)(450-log_variance[Math.max(0,T-GRAPH_W)+i]*GRAPH_H/K/K*8));
 			g2.setColor(Color.PINK);
-			g2.drawLine(W*SZ+25+i-1,(int)(225-log_skewness[i-1]*GRAPH_H),W*SZ+25+i,(int)(225-log_skewness[i]*GRAPH_H));
+			g2.drawLine(W*SZ+25+i-1,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i-1]*GRAPH_H),W*SZ+25+i,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i]*GRAPH_H));
 			
 		}
 
