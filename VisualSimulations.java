@@ -11,6 +11,8 @@ public  class VisualSimulations{
 	public static final int GRAPH_W = 480;
 	public static final int GRAPH_H = 360;
 
+	public static final int MAX_S = 1000;
+
 	public static final double EPS = 1e-9;
 	// basic tools
 	SecureRandom r1;
@@ -19,7 +21,9 @@ public  class VisualSimulations{
 	static boolean debug;
 	static boolean regular;
 	static boolean hillclimb;
+	static boolean hillclimb2;
 	static boolean torus;
+	static boolean window;
 	// model
 	int nPartition;
 	double K;
@@ -31,7 +35,8 @@ public  class VisualSimulations{
 	// field
 	int H,W;
 	int O;
-	int S;
+	static int S;
+	static int SHEEP_G;
 	int T;
 	int activeCells;
 	int maxT;
@@ -65,7 +70,6 @@ public  class VisualSimulations{
 			r1.setSeed(seed);
 			H = 50;
 			W = 50;
-			S = 100;
 			O = 5;
 			T = 0;
 			if(torus){
@@ -77,15 +81,15 @@ public  class VisualSimulations{
 			r = 0.1;
 			K = 100;
 			C0 = 0.1;
-			d = 0.03;
+			d = 0.02;
 			M = 40;
-			maxT = 5000;
+			maxT = 1000;
 			field=new double[H][W];
 			new_field=new double[H][W];
 			disturbance=new double[H][W];
-			sheep_row=new int[S];
-			sheep_col=new int[S];
-			sheep_pressure=new int[S];
+			sheep_row=new int[MAX_S];
+			sheep_col=new int[MAX_S];
+			sheep_pressure=new int[MAX_S];
 
 			log_total=new double[maxT];
 			log_productivity=new double[maxT];
@@ -111,7 +115,7 @@ public  class VisualSimulations{
 					sheep_row[i]=r1.nextInt(H-2*O)+O;
 					sheep_col[i]=r1.nextInt(W-2*O)+O;
 				}
-				sheep_pressure[i]=50;
+				sheep_pressure[i]=SHEEP_G;
 			}
 
 			for(int i=0;i<S;i++){
@@ -125,11 +129,14 @@ public  class VisualSimulations{
 	public void runTest(String seed){
 		try{
 			generate(seed);
-			jf.setSize((W+3)*SZ+550, H*SZ+40);
-			jf.setVisible(true);
-			draw();
-			try{Thread.sleep(3000);}
-			catch(Exception e){}
+			if(window){
+				jf.setSize((W+3)*SZ+550, H*SZ+40);
+				jf.setVisible(true);
+				draw();
+
+				try{Thread.sleep(3000);}
+				catch(Exception e){}
+			}
 			while(T < maxT){
 				log_total[T]=0;
 				log_grazing[T]=0;
@@ -153,36 +160,47 @@ public  class VisualSimulations{
 				log_skewness[T]/=activeCells;
 				log_skewness[T]/=Math.pow(log_variance[T],1.5);
 
-				try{Thread.sleep(del);}
-				catch(Exception e){}
-				for(int k=0;k<nPartition;k++){
-					for(int i=0;i<H;i++){
-						for(int j=0;j<W;j++){
-							double dt=1.0/nPartition;
-							double x=field[i][j];
-							for(int l=0;l<8;l++){
-								if(torus){
-									x+=field[(i+dr[l]+H)%H][(j+dc[l]+W)%W]*d/nPartition/8;
-								}else if(isInside(i+dr[l],j+dc[l])){
-									x+=field[i+dr[l]][j+dc[l]]*d/nPartition/8;
-								}
-							}
-							x-=field[i][j]*d/nPartition;
-							double dx=x*r*(1-x/K)-disturbance[i][j]*x*x/(M+x*x);
-
-							if(isInsideFence(i,j)){
-								log_productivity[T]+=x*r*(1-x/K)*dt;
-								log_grazing[T]+=disturbance[i][j]*x*x/(M+x*x)*dt;
-							}
-							new_field[i][j]=field[i][j]+dt*dx;
+				if(window){
+					try{Thread.sleep(del);}
+					catch(Exception e){}
+				}
+				
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						double x=field[i][j];
+						double dx=x*r*(1-x/K)-disturbance[i][j]*x*x/(M+x*x);
+						if(isInsideFence(i,j)){
+							log_productivity[T]+=x*r*(1-x/K);
+							log_grazing[T]+=Math.min(x+x*r*(1-x/K),(disturbance[i][j]-C0)*x*x/(M+x*x));
 						}
-					}
-					for(int i=0;i<H;i++){
-						for(int j=0;j<W;j++){
-							field[i][j]=new_field[i][j];
-						}
+						new_field[i][j]=field[i][j]+dx;
+						new_field[i][j]=Math.max(new_field[i][j],0.0);	
 					}
 				}
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						field[i][j]=new_field[i][j];
+						new_field[i][j]=0;
+					}
+				}
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						for(int k=0;k<8;k++){
+							if(torus){
+								new_field[i][j]+=field[(i+dr[k]+H)%H][(j+dc[k]+W)%W]*d/8;
+							}else if(isInside(i+dr[k],j+dc[k])){
+								new_field[i][j]+=field[i+dr[k]][j+dc[k]]*d/8;
+							}
+						}
+						new_field[i][j]-=field[i][j]*d;
+					}
+				}
+				for(int i=0;i<H;i++){
+					for(int j=0;j<W;j++){
+						field[i][j]+=new_field[i][j];
+					}
+				}
+
 				if(debug){
 					for(int i=0;i<H;i++){
 						for(int j=0;j<W;j++){
@@ -193,18 +211,30 @@ public  class VisualSimulations{
 					}
 				}
 
+				if(log_total[T]<0.2*K*activeCells||T==maxT-1){ // biomass 2割未満 で終了
+					double total_grazing = 0;
+					for(int i=0;i<=T;i++)total_grazing+=log_grazing[i];
+					double total_production = 0;
+					for(int i=0;i<=T;i++)total_production += log_productivity[i];
+					
+					// S [tab] SHEEP_G [tab] time [tab] grazing [tab] production
+					System.out.println(S+"\t"+SHEEP_G+"\t"+T+"\t"+total_grazing+"\t"+total_production);
+
+					System.exit(0);
+				}
+
 				// update log data
 				T++;
-				draw();
+				if(window)draw();
 				for(int i=0;i<S;i++){
 					int tr,tc;
 					if(regular){
 						tr=sheep_row[i];
 						tc=sheep_col[i]+1;
-						if(!isInsideFence(tr,tc)){
+						if((torus&&tc==W)||!isInsideFence(tr,tc)){
 							tr++;
 							tc=O;
-							if(!isInsideFence(tr,tc)){
+							if((torus&&tr==H)||!isInsideFence(tr,tc)){
 								tr=O;
 							}
 						}
@@ -218,6 +248,21 @@ public  class VisualSimulations{
 								if(field[tr][tc]<field[tmp_tr][tmp_tc]){
 									tr=tmp_tr;
 									tc=tmp_tc;
+								}
+							}
+						}
+					}else if(hillclimb2){
+						tr=sheep_row[i];
+						tc=sheep_col[i];
+						for(int j=-2;j<=2;j++){
+							for(int k=-2;k<=2;k++){
+								int tmp_tr=(sheep_row[i]+j+H)%H;
+								int tmp_tc=(sheep_col[i]+k+W)%W;
+								if(isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
+									if(field[tr][tc]<field[tmp_tr][tmp_tc]){
+										tr=tmp_tr;
+										tc=tmp_tc;
+									}
 								}
 							}
 						}
@@ -356,9 +401,11 @@ public  class VisualSimulations{
 	}
 	public VisualSimulations(String seed){
 		try{
-			jf = new JFrame();
-			v = new Vis();
-			jf.getContentPane().add(v);
+			if(window){
+				jf = new JFrame();
+				v = new Vis();
+				jf.getContentPane().add(v);
+			}
 			runTest(seed);
 		}catch(Exception e){
 			e.printStackTrace();
@@ -370,6 +417,8 @@ public  class VisualSimulations{
 		SZ = 15;
 		debug = false;
 		regular = false;
+		window = true;
+		SHEEP_G = 50;
 		for(int i=0;i<args.length;i++){
 			if(args[i].equals("-seed"))
 				seed = args[++i];
@@ -383,8 +432,16 @@ public  class VisualSimulations{
 				regular = true;
 			if(args[i].equals("-hillclimb"))
 				hillclimb = true;
+			if(args[i].equals("-hillclimb2"))
+				hillclimb2 = true;
 			if(args[i].equals("-torus"))
 				torus = true;
+			if(args[i].equals("-grazing"))
+				SHEEP_G = Integer.parseInt(args[++i]);
+			if(args[i].equals("-sheep"))
+				S = Integer.parseInt(args[++i]);
+			if(args[i].equals("-nowindow"))
+				window = false;
 		}
 		VisualSimulations vis = new VisualSimulations(seed);
 	}
