@@ -24,18 +24,22 @@ public  class VisualSimulations{
 	static boolean hillclimb2;
 	static boolean torus;
 	static boolean window;
+	static boolean control;
+	static int central;
 	// model
 	int nPartition;
 	double K;
 	double r;
 	double C0;
-	double d;
+	static double d;
 	double M;
 
 	// field
 	int H,W;
 	int O;
 	static int S;
+	static int WATER;
+	static int CAMP;
 	static int SHEEP_G;
 	int T;
 	int activeCells;
@@ -48,6 +52,15 @@ public  class VisualSimulations{
 	int[] sheep_col;
 	int[] sheep_pressure;
 	
+	int[] water_row;
+	int[] water_col;
+	int[] center;
+	int[] camp_row;
+	int[] camp_col;
+	int[][] nearest_water;
+	double[][] dist_from_water;
+	int MAX_DIST;
+	static double MAX_h = 2;
 	// log
 	double[] log_total;
 	double[] log_productivity;
@@ -62,7 +75,27 @@ public  class VisualSimulations{
 		if(torus)return true;
 		return (r >= O && r < H-O && c >= O && c < W-O);
 	}
-
+	boolean isInsideRegion(int r,int c,int id) {
+		if(central == 0) return true;
+		if(central == 1){
+			return (r-water_row[center[id]])*(r-water_row[center[id]])+(c-water_col[center[id]])*(c-water_col[center[id]])<=MAX_DIST;
+		}
+		if(central == 2){
+			if((r-water_row[center[id]])*(r-water_row[center[id]])+(c-water_col[center[id]])*(c-water_col[center[id]])>=r1.nextInt(MAX_DIST))return false;
+			return true;
+		}
+		if(central == 4){
+			int cr=camp_row[center[id]];
+			int cc=camp_col[center[id]];
+			int wr=water_row[nearest_water[cr][cc]];
+			int wc=water_col[nearest_water[cr][cc]];
+			if(Math.pow((r-wr)*(r-wr)+(c-wc)*(c-wc),0.25)+Math.pow((r-cr)*(r-cr)+(c-cc)*(c-cc),0.25)
+				>2*Math.pow(MAX_h*MAX_h+(double)((cr-wr)*(cr-wr)+(cc-wc)*(cc-wc))/4,0.25))return false;
+			// System.out.printf("%d %d %d: %f %f\n",r,c,id,Math.pow((r-wr)*(r-wr)+(c-wc)*(c-wc),0.25)+Math.pow((r-cr)*(r-cr)+(c-cc)*(c-cc),0.25),2*Math.pow(MAX_h*MAX_h+(double)((cr-wr)*(cr-wr)+(cc-wc)*(cc-wc))/4,0.25));
+			return true;
+		}
+		return true;
+	}
 	void generate(String seedStr){
 		try{
 			r1 = SecureRandom.getInstance("SHA1PRNG"); 
@@ -72,6 +105,7 @@ public  class VisualSimulations{
 			W = 50;
 			O = 5;
 			T = 0;
+			MAX_DIST = 56;
 			if(torus){
 				O=0;
 			}
@@ -81,7 +115,6 @@ public  class VisualSimulations{
 			r = 0.1;
 			K = 100;
 			C0 = 0.1;
-			d = 0.02;
 			M = 40;
 			maxT = 1000;
 			field=new double[H][W];
@@ -90,7 +123,15 @@ public  class VisualSimulations{
 			sheep_row=new int[MAX_S];
 			sheep_col=new int[MAX_S];
 			sheep_pressure=new int[MAX_S];
+			center=new int[MAX_S];
 
+			water_row=new int[WATER];
+			water_col=new int[WATER];
+			camp_row=new int[CAMP];
+			camp_col=new int[CAMP];
+			nearest_water=new int[H][W];
+			dist_from_water=new double[H][W];
+			
 			log_total=new double[maxT];
 			log_productivity=new double[maxT];
 			log_grazing=new double[maxT];
@@ -102,24 +143,78 @@ public  class VisualSimulations{
 				//	field[i][j]=r1.nextDouble()*K;
 					field[i][j]=K;
 					disturbance[i][j]=C0;
+					if(control){
+						disturbance[i][j]=C0+(double)SHEEP_G*S/activeCells;
+					}
 					// nextGaussianでもいいかも
 				}
 			}
-
-			for(int i=0;i<S;i++){
-				if(regular) {
-					int index=(H-2*O)*(W-2*O)*i/S;
-					sheep_row[i]=index/(W-2*O)+O;
-					sheep_col[i]=index%(W-2*O)+O;
-				}else{
-					sheep_row[i]=r1.nextInt(H-2*O)+O;
-					sheep_col[i]=r1.nextInt(W-2*O)+O;
+			if(!control){
+				for(int i=0;i<S;i++){
+					if(regular) {
+						int index=(H-2*O)*(W-2*O)*i/S;
+						sheep_row[i]=index/(W-2*O)+O;
+						sheep_col[i]=index%(W-2*O)+O;
+					}else{
+						sheep_row[i]=r1.nextInt(H-2*O)+O;
+						sheep_col[i]=r1.nextInt(W-2*O)+O;
+					}
+					sheep_pressure[i]=SHEEP_G;
 				}
-				sheep_pressure[i]=SHEEP_G;
-			}
 
-			for(int i=0;i<S;i++){
-				disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
+				for(int i=0;i<S;i++){
+					disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
+				}
+			}
+			for(int i=0;i<WATER;i++){
+				water_row[i]=r1.nextInt(H-2*O)+O;
+				water_col[i]=r1.nextInt(W-2*O)+O;
+			}
+			for(int i=0;i<H;i++)for(int j=0;j<W;j++){
+				dist_from_water[i][j]=1000000007;
+			}
+			for(int i=0;i<WATER;i++){
+				for(int j=0;j<H;j++){
+					for(int k=0;k<W;k++){
+						if(dist_from_water[j][k]>Math.sqrt((water_row[i]-j)*(water_row[i]-j)+(water_col[i]-k)*(water_col[i]-k))){
+							nearest_water[j][k]=i;
+							dist_from_water[j][k]=Math.sqrt((water_row[i]-j)*(water_row[i]-j)+(water_col[i]-k)*(water_col[i]-k));
+						}
+					}
+				}
+			}
+			for(int i=0;i<CAMP;i++){
+				camp_row[i]=r1.nextInt(H-2*O)+O;
+				camp_col[i]=r1.nextInt(W-2*O)+O;
+			}
+			
+			if(central > 0){
+				if(central <= 3){
+					for(int i=0;i<S;i++){
+						disturbance[sheep_row[i]][sheep_col[i]]-=sheep_pressure[i];
+						
+						while(true){
+							center[i]=r1.nextInt(WATER);
+							sheep_row[i]=r1.nextInt(H-2*O)+O;
+							sheep_col[i]=r1.nextInt(H-2*O)+O;
+							if((sheep_row[i]-water_row[center[i]])*(sheep_row[i]-water_row[center[i]])+
+								(sheep_col[i]-water_col[center[i]])*(sheep_col[i]-water_col[center[i]])<=MAX_DIST)break;
+						}
+						disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
+					}
+				}else{
+					for(int i=0;i<S;i++){
+						center[i]=r1.nextInt(CAMP);
+						disturbance[sheep_row[i]][sheep_col[i]]-=sheep_pressure[i];
+						while(true){
+							
+							sheep_row[i]=r1.nextInt(H-2*O)+O;
+							sheep_col[i]=r1.nextInt(H-2*O)+O;
+							if(isInsideRegion(sheep_row[i],sheep_col[i],i))break;
+						}
+						disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
+					}
+				}
 			}
 		}catch(Exception e){
 			e.printStackTrace();
@@ -226,59 +321,61 @@ public  class VisualSimulations{
 				// update log data
 				T++;
 				if(window)draw();
-				for(int i=0;i<S;i++){
-					int tr,tc;
-					if(regular){
-						tr=sheep_row[i];
-						tc=sheep_col[i]+1;
-						if((torus&&tc==W)||!isInsideFence(tr,tc)){
-							tr++;
-							tc=O;
-							if((torus&&tr==H)||!isInsideFence(tr,tc)){
-								tr=O;
-							}
-						}
-					}else if(hillclimb){
-						tr=sheep_row[i];
-						tc=sheep_col[i];
-						for(int j=0;j<8;j++){
-							int tmp_tr=(sheep_row[i]+dr[j]+H)%H;
-							int tmp_tc=(sheep_col[i]+dc[j]+W)%W;
-							if(isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
-								if(field[tr][tc]<field[tmp_tr][tmp_tc]){
-									tr=tmp_tr;
-									tc=tmp_tc;
+				if(!control){
+					for(int i=0;i<S;i++){
+						int tr,tc;
+						if(regular){
+							tr=sheep_row[i];
+							tc=sheep_col[i]+1;
+							if((torus&&tc==W)||!isInsideFence(tr,tc)){
+								tr++;
+								tc=O;
+								if((torus&&tr==H)||!isInsideFence(tr,tc)){
+									tr=O;
 								}
 							}
-						}
-					}else if(hillclimb2){
-						tr=sheep_row[i];
-						tc=sheep_col[i];
-						for(int j=-2;j<=2;j++){
-							for(int k=-2;k<=2;k++){
-								int tmp_tr=(sheep_row[i]+j+H)%H;
-								int tmp_tc=(sheep_col[i]+k+W)%W;
-								if(isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
+						}else if(hillclimb){
+							tr=sheep_row[i];
+							tc=sheep_col[i];
+							for(int j=0;j<8;j++){
+								int tmp_tr=(sheep_row[i]+dr[j]+H)%H;
+								int tmp_tc=(sheep_col[i]+dc[j]+W)%W;
+								if(isInsideRegion(tmp_tr,tmp_tc,i)&&isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
 									if(field[tr][tc]<field[tmp_tr][tmp_tc]){
 										tr=tmp_tr;
 										tc=tmp_tc;
 									}
 								}
 							}
-						}
-					}else{
-						int direction=r1.nextInt(8);
-						tr=(sheep_row[i]+dr[direction]+H)%H;
-						tc=(sheep_col[i]+dc[direction]+W)%W;
-						if(!isInsideFence(tr,tc)){
+						}else if(hillclimb2){
 							tr=sheep_row[i];
 							tc=sheep_col[i];
+							for(int j=-2;j<=2;j++){
+								for(int k=-2;k<=2;k++){
+									int tmp_tr=(sheep_row[i]+j+H)%H;
+									int tmp_tc=(sheep_col[i]+k+W)%W;
+									if(isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
+										if(field[tr][tc]<field[tmp_tr][tmp_tc]){
+											tr=tmp_tr;
+											tc=tmp_tc;
+										}
+									}
+								}
+							}
+						}else{
+							int direction=r1.nextInt(8);
+							tr=(sheep_row[i]+dr[direction]+H)%H;
+							tc=(sheep_col[i]+dc[direction]+W)%W;
+							if(!isInsideFence(tr,tc)){
+								tr=sheep_row[i];
+								tc=sheep_col[i];
+							}
 						}
+						disturbance[sheep_row[i]][sheep_col[i]]-=sheep_pressure[i];
+						sheep_row[i]=tr;
+						sheep_col[i]=tc;
+						disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
 					}
-					disturbance[sheep_row[i]][sheep_col[i]]-=sheep_pressure[i];
-					sheep_row[i]=tr;
-					sheep_col[i]=tc;
-					disturbance[sheep_row[i]][sheep_col[i]]+=sheep_pressure[i];
 				}
 			}
 
@@ -314,10 +411,21 @@ public  class VisualSimulations{
 			g2.setColor(new Color(0.0f, 1.0f, 0.0f, Math.min(1.0f, Math.max(0.0f,(float)(cache[i][j]/K)))));
 			g2.fillRect(j * SZ + 1, i * SZ + 1, SZ - 1, SZ - 1);
 		}
-		for(int j=0;j<S;j++){
-			g2.setColor(new Color(1.0f, 0.0f, 0.0f, 0.5f));
-			g2.fillRect(sheep_col[j] * SZ + 1, sheep_row[j] * SZ + 1, SZ - 1, SZ - 1);
+		if(!control){
+			for(int j=0;j<S;j++){
+				g2.setColor(new Color(1.0f, 0.0f, 0.0f, 0.5f));
+				g2.fillRect(sheep_col[j] * SZ + 1, sheep_row[j] * SZ + 1, SZ - 1, SZ - 1);
+			}
 		}
+		for(int j=0;j<WATER;j++){
+			g2.setColor(new Color(0.0f, 0.0f, 1.0f, 0.5f));
+			g2.fillRect(water_col[j] * SZ + 1, water_row[j] * SZ + 1, SZ - 1, SZ - 1);
+		}
+		for(int j=0;j<CAMP;j++){
+			g2.setColor(new Color(1.0f, 0.0f, 1.0f, 0.5f));
+			g2.fillRect(camp_col[j] * SZ + 1, camp_row[j] * SZ + 1, SZ - 1, SZ - 1);
+		}
+		
 		// lines between cells
 		g2.setColor(Color.BLACK);
 		for (int i = 0; i <= H; i++)
@@ -355,7 +463,7 @@ public  class VisualSimulations{
 			g2.setColor(Color.ORANGE);
 			g2.drawLine(W*SZ+25+i-1,(int)(450-log_variance[Math.max(0,T-GRAPH_W)+i-1]*GRAPH_H/K/K*8),W*SZ+25+i,(int)(450-log_variance[Math.max(0,T-GRAPH_W)+i]*GRAPH_H/K/K*8));
 			g2.setColor(Color.PINK);
-			g2.drawLine(W*SZ+25+i-1,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i-1]*GRAPH_H),W*SZ+25+i,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i]*GRAPH_H));
+			if(!control)g2.drawLine(W*SZ+25+i-1,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i-1]*GRAPH_H),W*SZ+25+i,(int)(225-log_skewness[Math.max(0,T-GRAPH_W)+i]*GRAPH_H));
 			
 		}
 
@@ -415,10 +523,15 @@ public  class VisualSimulations{
 		String seed = "1";
 		del = 100;
 		SZ = 15;
+		d = 0.02;
 		debug = false;
 		regular = false;
 		window = true;
+		control = false;
+		central = 0;
 		SHEEP_G = 50;
+		WATER = 0;
+		CAMP = 0;
 		for(int i=0;i<args.length;i++){
 			if(args[i].equals("-seed"))
 				seed = args[++i];
@@ -434,6 +547,14 @@ public  class VisualSimulations{
 				hillclimb = true;
 			if(args[i].equals("-hillclimb2"))
 				hillclimb2 = true;
+			if(args[i].equals("-central1"))
+				central = 1;
+			if(args[i].equals("-central2"))
+				central = 2;
+			if(args[i].equals("-central3"))
+				central = 3;
+			if(args[i].equals("-central4"))
+				central = 4;
 			if(args[i].equals("-torus"))
 				torus = true;
 			if(args[i].equals("-grazing"))
@@ -442,6 +563,14 @@ public  class VisualSimulations{
 				S = Integer.parseInt(args[++i]);
 			if(args[i].equals("-nowindow"))
 				window = false;
+			if(args[i].equals("-migration"))
+				d = Double.parseDouble(args[++i]);
+			if(args[i].equals("-control"))
+				control = true;
+			if(args[i].equals("-water"))
+				WATER = Integer.parseInt(args[++i]);
+			if(args[i].equals("-camp"))
+				CAMP = Integer.parseInt(args[++i]);
 		}
 		VisualSimulations vis = new VisualSimulations(seed);
 	}
