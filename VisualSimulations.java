@@ -18,6 +18,7 @@ public  class VisualSimulations{
 	SecureRandom r1;
 	int[] dr={1,1,1,0,0,-1,-1,-1};
 	int[] dc={1,0,-1,1,-1,1,0,-1};
+	int[] perm={0,1,2,3,4,5,6,7};
 	static boolean debug;
 	static boolean regular;
 	static boolean hillclimb;
@@ -25,6 +26,8 @@ public  class VisualSimulations{
 	static boolean torus;
 	static boolean window;
 	static boolean control;
+	static boolean varianceplot;
+	static boolean durationplot;
 	static int central;
 	// model
 	int nPartition;
@@ -37,10 +40,11 @@ public  class VisualSimulations{
 	// field
 	int H,W;
 	int O;
+	static int S_original;
 	static int S;
 	static int WATER;
 	static int CAMP;
-	static int SHEEP_G;
+	static double SHEEP_G;
 	int T;
 	int activeCells;
 	int maxT;
@@ -50,7 +54,7 @@ public  class VisualSimulations{
 	double[][] disturbance;
 	int[] sheep_row;
 	int[] sheep_col;
-	int[] sheep_pressure;
+	double[] sheep_pressure;
 	
 	int[] water_row;
 	int[] water_col;
@@ -67,6 +71,13 @@ public  class VisualSimulations{
 	double[] log_grazing;
 	double[] log_variance;
 	double[] log_skewness;
+
+	public static final int DURATION_PLOT_MAX = 1100000;
+	int[] log_durationplot_row;
+	int[] log_durationplot_col;
+	int[] log_durationplot_duration;
+	int[][] last_visit;
+	int durationplot_ind;
 	boolean isInside(int r, int c) {
 		if(torus)return true;
 		return (r >= 0 && r < H && c >= 0 && c < W);
@@ -114,15 +125,16 @@ public  class VisualSimulations{
 			nPartition = 1000;
 			r = 0.1;
 			K = 100;
-			C0 = 0.1;
-			M = 40;
+			C0 = 1;
+			M = 10;
+			S_original = S;
 			maxT = 1000;
 			field=new double[H][W];
 			new_field=new double[H][W];
 			disturbance=new double[H][W];
 			sheep_row=new int[MAX_S];
 			sheep_col=new int[MAX_S];
-			sheep_pressure=new int[MAX_S];
+			sheep_pressure=new double[MAX_S];
 			center=new int[MAX_S];
 
 			water_row=new int[WATER];
@@ -132,11 +144,22 @@ public  class VisualSimulations{
 			nearest_water=new int[H][W];
 			dist_from_water=new double[H][W];
 			
-			log_total=new double[maxT];
-			log_productivity=new double[maxT];
-			log_grazing=new double[maxT];
-			log_variance=new double[maxT];
-			log_skewness=new double[maxT];
+			log_total=new double[maxT+500];
+			log_productivity=new double[maxT+500];
+			log_grazing=new double[maxT+500];
+			log_variance=new double[maxT+500];
+			log_skewness=new double[maxT+500];
+
+			if(durationplot){
+				log_durationplot_row=new int[DURATION_PLOT_MAX];
+				log_durationplot_col=new int[DURATION_PLOT_MAX];
+				log_durationplot_duration=new int[DURATION_PLOT_MAX];
+				last_visit=new int[H][W];
+				for(int i=0;i<H;i++)for(int j=0;j<W;j++)
+					last_visit[i][j]=-1;
+				durationplot_ind =0;
+			}
+
 			// TODO: 何か generate するべきものをする
 			for(int i=0;i<H;i++){
 				for(int j=0;j<W;j++){
@@ -232,7 +255,7 @@ public  class VisualSimulations{
 				try{Thread.sleep(3000);}
 				catch(Exception e){}
 			}
-			while(T < maxT){
+			while(true){
 				log_total[T]=0;
 				log_grazing[T]=0;
 				log_productivity[T]=0;
@@ -263,10 +286,10 @@ public  class VisualSimulations{
 				for(int i=0;i<H;i++){
 					for(int j=0;j<W;j++){
 						double x=field[i][j];
-						double dx=x*r*(1-x/K)-disturbance[i][j]*x*x/(M+x*x);
+						double dx=x*r*(1-x/K)-disturbance[i][j]*x/(M+x);
 						if(isInsideFence(i,j)){
 							log_productivity[T]+=x*r*(1-x/K);
-							log_grazing[T]+=Math.min(x+x*r*(1-x/K),(disturbance[i][j]-C0)*x*x/(M+x*x));
+							log_grazing[T]+=Math.min(x+x*r*(1-x/K),(disturbance[i][j]-C0)*x/(M+x));
 						}
 						new_field[i][j]=field[i][j]+dx;
 						new_field[i][j]=Math.max(new_field[i][j],0.0);	
@@ -305,24 +328,58 @@ public  class VisualSimulations{
 						System.out.println();
 					}
 				}
+				if(varianceplot){
+					System.out.println(T+"\t"+log_variance[T]+"\t"+log_productivity[T]+"\t"+log_grazing[T]+"\t"+log_total[T]);
+				}
+				// if(log_grazing[T]<0.2*S*SHEEP_G||T==maxT-1){ // biomass 2割未満 で終了
+				// 	double total_grazing = 0;
+				// 	for(int i=0;i<=T;i++)total_grazing+=log_grazing[i];
+				// 	double total_production = 0;
+				// 	for(int i=0;i<=T;i++)total_production += log_productivity[i];
+					
+				// 	// S [tab] SHEEP_G [tab] time [tab] grazing [tab] production
+				// 	if(!varianceplot){
+				// 		System.out.println(S+"\t"+SHEEP_G+"\t"+T+"\t"+total_grazing+"\t"+total_production);
+				// 	}
+				// 	System.exit(0);
+				// }
 
-				if(log_total[T]<0.2*K*activeCells||T==maxT-1){ // biomass 2割未満 で終了
+				if(T==maxT-1){
+					for(int i=0;i<H;i++)for(int j=0;j<W;j++){
+						disturbance[i][j]=C0;
+					}
+					if(!durationplot)System.out.print(S+"\t");
+					S=0;
+				}
+				if(T==maxT-1+50){
 					double total_grazing = 0;
 					for(int i=0;i<=T;i++)total_grazing+=log_grazing[i];
 					double total_production = 0;
 					for(int i=0;i<=T;i++)total_production += log_productivity[i];
-					
-					// S [tab] SHEEP_G [tab] time [tab] grazing [tab] production
-					System.out.println(S+"\t"+SHEEP_G+"\t"+T+"\t"+total_grazing+"\t"+total_production);
+					int alive_patch = 0;
+					for(int i=0;i<H;i++)for(int j=0;j<W;j++){
+						if(field[i][j]>K/2)alive_patch++;
+					}
+					// S [tab] SHEEP_G [tab] time [tab] grazing [tab] production [tab] alive_patch
+					if(!durationplot)System.out.println(SHEEP_G+"\t"+T+"\t"+total_grazing+"\t"+total_production+"\t"+alive_patch);
+					if(durationplot){
 
+					}
 					System.exit(0);
 				}
 
 				// update log data
 				T++;
+
 				if(window)draw();
 				if(!control){
 					for(int i=0;i<S;i++){
+						for(int j=1;j<8;j++){
+							int at=(int)(Math.random()*j);
+							int s_v=perm[at];
+							perm[at]=perm[j];
+							perm[j]=s_v;
+						}
 						int tr,tc;
 						if(regular){
 							tr=sheep_row[i];
@@ -338,8 +395,8 @@ public  class VisualSimulations{
 							tr=sheep_row[i];
 							tc=sheep_col[i];
 							for(int j=0;j<8;j++){
-								int tmp_tr=(sheep_row[i]+dr[j]+H)%H;
-								int tmp_tc=(sheep_col[i]+dc[j]+W)%W;
+								int tmp_tr=(sheep_row[i]+dr[perm[j]]+H)%H;
+								int tmp_tc=(sheep_col[i]+dc[perm[j]]+W)%W;
 								if(isInsideRegion(tmp_tr,tmp_tc,i)&&isInsideFence(tmp_tr,tmp_tc)&&disturbance[tmp_tr][tmp_tc]<C0+EPS){
 									if(field[tr][tc]<field[tmp_tr][tmp_tc]){
 										tr=tmp_tr;
@@ -529,7 +586,7 @@ public  class VisualSimulations{
 		window = true;
 		control = false;
 		central = 0;
-		SHEEP_G = 50;
+		SHEEP_G = 40;
 		WATER = 0;
 		CAMP = 0;
 		for(int i=0;i<args.length;i++){
@@ -558,7 +615,7 @@ public  class VisualSimulations{
 			if(args[i].equals("-torus"))
 				torus = true;
 			if(args[i].equals("-grazing"))
-				SHEEP_G = Integer.parseInt(args[++i]);
+				SHEEP_G = Double.parseDouble(args[++i]);
 			if(args[i].equals("-sheep"))
 				S = Integer.parseInt(args[++i]);
 			if(args[i].equals("-nowindow"))
@@ -571,6 +628,10 @@ public  class VisualSimulations{
 				WATER = Integer.parseInt(args[++i]);
 			if(args[i].equals("-camp"))
 				CAMP = Integer.parseInt(args[++i]);
+			if(args[i].equals("-varianceplot"))
+				varianceplot = true;
+			if(args[i].equals("-durationplot"))
+				durationplot = true;
 		}
 		VisualSimulations vis = new VisualSimulations(seed);
 	}
